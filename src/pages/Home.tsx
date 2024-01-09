@@ -10,6 +10,8 @@ import { Movie } from '~/types/api';
 
 export const Home = () => {
   const [movies, setMovies] = useState<Movie[]>([]);
+  const [selected, setSelected] = useState<string>('');
+  const [recording, setRecording] = useState(false);
 
   const { width } = Dimensions.get('window');
 
@@ -17,13 +19,14 @@ export const Home = () => {
     const load = async () => {
       const response = await getSavedMovies();
 
-      console.log(response);
-
       setMovies(response.data);
+      setSelected(response.data[0].id);
     };
 
     load();
   }, []);
+
+  console.log(selected, recording);
 
   return (
     <ScrollView
@@ -47,7 +50,12 @@ export const Home = () => {
               minHeight: '100%',
               marginHorizontal: 12,
             }}>
-            <MovieCard movie={item} />
+            <MovieCard
+              movie={item}
+              selected={selected === item.id}
+              onRecordStart={() => setRecording(true)}
+              onRecordStop={() => setRecording(false)}
+            />
           </View>
         )}
         width={width - 96}
@@ -60,6 +68,8 @@ export const Home = () => {
         panGestureHandlerProps={{
           activeOffsetX: [-10, 10],
         }}
+        onSnapToItem={index => setSelected(movies[index].id)}
+        enabled={!recording}
       />
     </ScrollView>
   );

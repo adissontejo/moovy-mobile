@@ -3,6 +3,7 @@ export interface Movie {
   title: string;
   rating: string;
   posterUrl: string;
+  reviewUrl: string;
   createdAt: string;
   updatedAt: string;
 }

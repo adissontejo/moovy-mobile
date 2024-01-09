@@ -15,6 +15,7 @@
     "react-native": "0.73.1",
     "react-native-audio-recorder-player": "^3.6.5",
     "react-native-config": "^1.5.1",
+    "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.14.0",
     "react-native-paper": "^5.11.6",
     "react-native-permissions": "^4.0.4",

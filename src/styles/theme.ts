@@ -18,6 +18,12 @@ export const theme = {
       fontWeight: 'bold',
     },
     bodyLarge: {
+      fontSize: 30,
+    },
+    bodyMedium: {
+      fontSize: 24,
+    },
+    bodySmall: {
       fontSize: 18,
     },
   },
