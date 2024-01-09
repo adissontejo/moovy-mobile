@@ -130,12 +130,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
 
     SoundPlayer.seek(0);
-
-    if (pendingSync[currentMovie.id]) {
-      SoundPlayer.playUrl('file://' + reviewPath);
-    } else {
-      SoundPlayer.playUrl('http://' + currentMovie.reviewUrl);
-    }
+    SoundPlayer.playUrl(currentMovie.reviewUrl);
 
     setCurrentSeconds(0);
     setPlaying(true);
@@ -172,7 +167,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
         setMovies(prev =>
           prev.map(item =>
-            item.id === movie.id ? { ...item, reviewUrl: path } : item,
+            item.id === movie.id
+              ? { ...item, reviewUrl: 'file://' + path }
+              : item,
           ),
         );
 
@@ -263,8 +260,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setCurrentMovie(response.data[0]);
 
       operations.current = await getOperations();
-
-      console.log(operations.current);
     };
 
     load();
