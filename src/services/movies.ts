@@ -20,3 +20,7 @@ export const addMovieReview = (id: string) => {
     toUrl: `${api.defaults.baseURL}/movies/${id}/review`,
   }).promise;
 };
+
+export const removeMovieReview = (id: string) => {
+  return api.delete(`/movies/${id}/review`);
+};

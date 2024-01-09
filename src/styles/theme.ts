@@ -7,6 +7,8 @@ export const theme = {
     primary: '#6CD3AE',
     secondary: '#12153D',
     info: '#434670',
+    danger: '#FE6D8E',
+    grey: '#A1A1A1',
   },
   fonts: {
     ...DefaultTheme.fonts,
@@ -25,6 +27,9 @@ export const theme = {
     },
     bodySmall: {
       fontSize: 18,
+    },
+    bodyExtraSmall: {
+      fontSize: 14,
     },
   },
 } as const;

@@ -1,6 +1,6 @@
 import { Movie } from './api';
 
 export interface Operation {
-  type: 'post';
+  type: 'post' | 'delete';
   movie: Movie;
 }

@@ -4,6 +4,7 @@ import React, {
   ReactNode,
   SetStateAction,
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -14,9 +15,14 @@ import { Platform } from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import { DocumentDirectoryPath, unlink } from 'react-native-fs';
 import { PERMISSIONS, request } from 'react-native-permissions';
+import SoundPlayer from 'react-native-sound-player';
 
 import { getOperations, saveOperations } from '~/repositories/operations';
-import { addMovieReview, getSavedMovies } from '~/services/movies';
+import {
+  addMovieReview,
+  getSavedMovies,
+  removeMovieReview,
+} from '~/services/movies';
 import { Movie } from '~/types/api';
 import { Operation } from '~/types/storage';
 
@@ -26,10 +32,14 @@ export interface AppContextData {
   currentMovie: Movie | null;
   setCurrentMovie: Dispatch<SetStateAction<Movie | null>>;
   recording: boolean;
-  setRecording: Dispatch<SetStateAction<boolean>>;
+  playing: boolean;
+  pendingSync: Record<string, boolean>;
   currentTime: string;
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
+  startPlaying: () => void;
+  stopPlaying: () => void;
+  deleteCurrentReview: () => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextData>({
@@ -38,19 +48,24 @@ export const AppContext = createContext<AppContextData>({
   currentMovie: null,
   setCurrentMovie: () => {},
   recording: false,
-  setRecording: () => {},
+  playing: false,
+  pendingSync: {},
   currentTime: '00:00',
   startRecording: () => Promise.resolve(),
   stopRecording: () => Promise.resolve(),
+  startPlaying: () => {},
+  stopPlaying: () => {},
+  deleteCurrentReview: () => Promise.resolve(),
 });
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [currentMovie, setCurrentMovie] = useState<Movie | null>(null);
   const [recording, setRecording] = useState(false);
+  const [playing, setPlaying] = useState(false);
   const [currentSeconds, setCurrentSeconds] = useState(0);
+  const [pendingSync, setPendingSync] = useState<Record<string, boolean>>({});
 
-  const preventRecording = useRef(false);
   const recorder = useRef<AudioRecorderPlayer>(new AudioRecorderPlayer());
   const intervalId = useRef<NodeJS.Timeout | null>(null);
   const operations = useRef<Operation[]>([]);
@@ -68,7 +83,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const startRecording = async () => {
-    if (currentMovie === null || preventRecording.current) {
+    if (currentMovie === null) {
       return;
     }
 
@@ -86,8 +101,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    preventRecording.current = true;
-
     await recorder.current.startRecorder(reviewPath);
 
     setCurrentSeconds(0);
@@ -104,37 +117,142 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await recorder.current.stopRecorder();
 
     setRecording(false);
-
-    preventRecording.current = false;
+    setCurrentSeconds(0);
 
     clearInterval(intervalId.current!);
 
     await uploadReview(currentMovie);
   };
 
-  const uploadReview = async (movie: Movie) => {
-    const path = DocumentDirectoryPath + `/${movie.id}.mp3`;
-
-    if (!netInfo.isConnected) {
-      operations.current.push({
-        type: 'post',
-        movie,
-      });
-
-      await saveOperations(operations.current);
-
+  const startPlaying = () => {
+    if (currentMovie === null || !currentMovie.reviewUrl) {
       return;
     }
 
+    SoundPlayer.seek(0);
+
+    if (pendingSync[currentMovie.id]) {
+      SoundPlayer.playUrl('file://' + reviewPath);
+    } else {
+      SoundPlayer.playUrl('http://' + currentMovie.reviewUrl);
+    }
+
+    setCurrentSeconds(0);
+    setPlaying(true);
+
+    intervalId.current = setInterval(updateSeconds, 1000);
+  };
+
+  const stopPlaying = useCallback(() => {
+    if (currentMovie === null || !playing) {
+      return;
+    }
+
+    SoundPlayer.pause();
+
+    setPlaying(false);
+    clearInterval(intervalId.current!);
+  }, [currentMovie, playing]);
+
+  const uploadReview = useCallback(
+    async (movie: Movie) => {
+      setPendingSync(prev => ({ ...prev, [movie.id]: true }));
+
+      const path = DocumentDirectoryPath + `/${movie.id}.mp3`;
+
+      operations.current = operations.current.filter(
+        item => item.movie.id !== movie.id,
+      );
+
+      if (!netInfo.isConnected) {
+        operations.current.push({
+          type: 'post',
+          movie,
+        });
+
+        setMovies(prev =>
+          prev.map(item =>
+            item.id === movie.id ? { ...item, reviewUrl: path } : item,
+          ),
+        );
+
+        await saveOperations(operations.current);
+
+        return;
+      }
+
+      const response = await addMovieReview(movie.id);
+
+      const { reviewUrl } = JSON.parse(response.body);
+
+      setMovies(prev =>
+        prev.map(item =>
+          item.id === movie.id ? { ...item, reviewUrl } : item,
+        ),
+      );
+
+      setPendingSync(prev => ({ ...prev, [movie.id]: false }));
+
+      try {
+        await unlink(path);
+      } catch (error) {}
+    },
+    [netInfo.isConnected, setMovies],
+  );
+
+  const deleteReview = useCallback(
+    async (movie: Movie) => {
+      setPendingSync(prev => ({ ...prev, [movie.id]: true }));
+
+      const path = DocumentDirectoryPath + `/${movie.id}.mp3`;
+
+      const index = operations.current.findIndex(
+        operation =>
+          operation.movie.id === movie.id && operation.type === 'post',
+      );
+
+      if (index !== -1) {
+        operations.current.splice(index, 1);
+
+        setPendingSync(prev => ({ ...prev, [movie.id]: false }));
+
+        await saveOperations(operations.current);
+
+        try {
+          await unlink(path);
+        } catch (error) {}
+      } else if (!netInfo.isConnected) {
+        operations.current.push({
+          type: 'delete',
+          movie,
+        });
+
+        await saveOperations(operations.current);
+      } else {
+        await removeMovieReview(movie.id);
+
+        setPendingSync(prev => ({ ...prev, [movie.id]: false }));
+      }
+
+      setMovies(prev =>
+        prev.map(item =>
+          item.id === movie.id ? { ...item, reviewUrl: null } : item,
+        ),
+      );
+    },
+    [netInfo.isConnected, setMovies],
+  );
+
+  const deleteCurrentReview = async () => {
     if (currentMovie === null) {
       return;
     }
 
-    await addMovieReview(movie.id);
+    if (playing) {
+      stopPlaying();
+    }
 
-    try {
-      await unlink(path);
-    } catch (error) {}
+    await deleteReview(currentMovie);
   };
 
   useEffect(() => {
@@ -146,29 +264,62 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       operations.current = await getOperations();
 
-      addEventListener(async state => {
-        if (state.isConnected) {
-          await Promise.all(
-            operations.current.map(operation => {
-              const promise = async () => {
-                if (operation.type === 'post') {
-                  await uploadReview(operation.movie);
-                }
-              };
-
-              return promise();
-            }),
-          );
-
-          operations.current = [];
-
-          await saveOperations([]);
-        }
-      });
+      console.log(operations.current);
     };
 
     load();
   }, []);
+
+  useEffect(() => {
+    const listener = SoundPlayer.addEventListener(
+      'FinishedPlaying',
+      stopPlaying,
+    );
+
+    return () => listener.remove();
+  }, [stopPlaying]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (playing) {
+        stopPlaying();
+      }
+
+      if (recording) {
+        await stopRecording();
+      }
+
+      setCurrentSeconds(0);
+    };
+
+    load();
+  }, [currentMovie]);
+
+  useEffect(() => {
+    const unsub = addEventListener(async state => {
+      if (state.isConnected) {
+        await Promise.all(
+          operations.current.map(operation => {
+            const promise = async () => {
+              if (operation.type === 'post') {
+                await uploadReview(operation.movie);
+              } else {
+                await deleteReview(operation.movie);
+              }
+            };
+
+            return promise();
+          }),
+        );
+
+        operations.current = [];
+
+        await saveOperations([]);
+      }
+    });
+
+    return () => unsub();
+  }, [uploadReview, deleteReview]);
 
   return (
     <AppContext.Provider
@@ -178,10 +329,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         currentMovie,
         setCurrentMovie,
         recording,
-        setRecording,
+        playing,
+        pendingSync,
         currentTime,
         startRecording,
         stopRecording,
+        startPlaying,
+        stopPlaying,
+        deleteCurrentReview,
       }}>
       {children}
     </AppContext.Provider>
