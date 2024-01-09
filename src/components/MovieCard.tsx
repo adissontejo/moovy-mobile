@@ -1,9 +1,6 @@
-import React, { useRef, useState } from 'react';
-import { Dimensions, Image, Platform, View } from 'react-native';
-import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import React from 'react';
+import { Dimensions, Image, View } from 'react-native';
 import { IconButton, Text } from 'react-native-paper';
-import { PERMISSIONS, check, request } from 'react-native-permissions';
-import RNFS from 'react-native-fs';
 import Animated, {
   useAnimatedStyle,
   withTiming,
@@ -13,112 +10,47 @@ import MicrophoneIcon from '~/assets/microphone.svg';
 import SendIcon from '~/assets/send.svg';
 import StarIcon from '~/assets/star.svg';
 
-import { addMovieReview } from '~/services/movies';
 import { theme } from '~/styles';
 import { Movie } from '~/types/api';
+import { useAppContext } from '~/contexts';
 
 export interface MovieCardProps {
   movie: Movie;
-  selected: boolean;
-  onRecordStart: () => void;
-  onRecordStop: () => void;
 }
 
-export const MovieCard = ({
-  movie,
-  selected,
-  onRecordStart,
-  onRecordStop,
-}: MovieCardProps) => {
-  const [recording, setRecording] = useState(false);
-  const [recordPosition, setRecordPosition] = useState(0);
+export const MovieCard = ({ movie }: MovieCardProps) => {
+  const {
+    currentMovie,
+    recording,
+    currentTime,
+    startRecording,
+    stopRecording,
+  } = useAppContext();
 
-  const intervalHandle = useRef<NodeJS.Timeout>();
-  const recorder = useRef(new AudioRecorderPlayer());
-  const preventRecord = useRef(false);
+  const isRecording = currentMovie?.id === movie.id && recording;
 
   const { width } = Dimensions.get('window');
 
-  const reviewPath = RNFS.DocumentDirectoryPath + `/${movie.id}.mp3`;
-
-  const updateRecordingTime = () => {
-    setRecordPosition(prev => prev + 1);
-  };
-
   const handleRecordClick = async () => {
+    if (currentMovie?.id !== movie.id) {
+      return;
+    }
+
     if (recording) {
-      await handleStopRecording();
+      await stopRecording();
     } else {
-      await handleStartRecording();
-    }
-  };
-
-  const handleStartRecording = async () => {
-    if (preventRecord.current || !selected) {
-      return;
-    }
-
-    if (Platform.OS === 'android') {
-      const permission = await request(PERMISSIONS.ANDROID.RECORD_AUDIO);
-
-      if (permission !== 'granted') {
-        return;
-      }
-    } else if (Platform.OS === 'ios') {
-      const permission = await check(PERMISSIONS.IOS.MICROPHONE);
-
-      if (permission !== 'granted') {
-        return;
-      }
-    }
-
-    onRecordStart();
-
-    preventRecord.current = true;
-
-    setRecordPosition(0);
-
-    await recorder.current.startRecorder(reviewPath);
-
-    intervalHandle.current = setInterval(updateRecordingTime, 1000);
-
-    setRecording(true);
-  };
-
-  const handleStopRecording = async () => {
-    if (!recording || recordPosition === 0) {
-      return;
-    }
-
-    try {
-      await recorder.current.stopRecorder();
-    } catch (error) {
-      console.log(error);
-    }
-
-    preventRecord.current = false;
-
-    clearInterval(intervalHandle.current);
-
-    setRecording(false);
-
-    onRecordStop();
-
-    try {
-      await addMovieReview(movie.id);
-    } catch (error) {
-      console.log(error);
+      await startRecording();
     }
   };
 
   const overlayStyle = useAnimatedStyle(() => {
     return {
-      width: withTiming(recording ? width - 32 : 60, { duration: 400 }),
-      height: withTiming(recording ? 240 : 60, { duration: 400 }),
-      left: withTiming(recording ? -width / 2 + 30 + 16 : 0, {
+      width: withTiming(isRecording ? width - 32 : 60, { duration: 400 }),
+      height: withTiming(isRecording ? 240 : 60, { duration: 400 }),
+      left: withTiming(isRecording ? -width / 2 + 30 + 16 : 0, {
         duration: 400,
       }),
-      bottom: withTiming(recording ? -12 : 0, { duration: 400 }),
+      bottom: withTiming(isRecording ? -12 : 0, { duration: 400 }),
     };
   });
 
@@ -194,13 +126,13 @@ export const MovieCard = ({
               numberOfLines={1}
               variant="bodyLarge"
               style={{ color: 'white', marginLeft: 8 }}>
-              {recorder.current?.mmss(recordPosition)}
+              {currentTime}
             </Text>
           </View>
         </Animated.View>
         <IconButton
           mode="contained"
-          icon={recording ? SendIcon : MicrophoneIcon}
+          icon={isRecording ? SendIcon : MicrophoneIcon}
           onPress={handleRecordClick}
           style={{
             margin: 0,

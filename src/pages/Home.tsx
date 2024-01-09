@@ -1,32 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Dimensions, ScrollView, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import Carousel from 'react-native-reanimated-carousel';
 
 import { MovieCard } from '~/components';
-import { getSavedMovies } from '~/services/movies';
+import { useAppContext } from '~/contexts';
 import { theme } from '~/styles';
-import { Movie } from '~/types/api';
 
 export const Home = () => {
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [selected, setSelected] = useState<string>('');
-  const [recording, setRecording] = useState(false);
+  const { movies, recording, setCurrentMovie } = useAppContext();
 
   const { width } = Dimensions.get('window');
-
-  useEffect(() => {
-    const load = async () => {
-      const response = await getSavedMovies();
-
-      setMovies(response.data);
-      setSelected(response.data[0].id);
-    };
-
-    load();
-  }, []);
-
-  console.log(selected, recording);
 
   return (
     <ScrollView
@@ -50,12 +34,7 @@ export const Home = () => {
               minHeight: '100%',
               marginHorizontal: 12,
             }}>
-            <MovieCard
-              movie={item}
-              selected={selected === item.id}
-              onRecordStart={() => setRecording(true)}
-              onRecordStop={() => setRecording(false)}
-            />
+            <MovieCard movie={item} />
           </View>
         )}
         width={width - 96}
@@ -68,7 +47,7 @@ export const Home = () => {
         panGestureHandlerProps={{
           activeOffsetX: [-10, 10],
         }}
-        onSnapToItem={index => setSelected(movies[index].id)}
+        onSnapToItem={index => setCurrentMovie(movies[index])}
         enabled={!recording}
       />
     </ScrollView>
