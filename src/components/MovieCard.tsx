@@ -156,7 +156,7 @@ export const MovieCard = ({ movie }: MovieCardProps) => {
   const overlayStyle = useAnimatedStyle(() => {
     return {
       width: withTiming(isRecording ? width - 32 : 0, { duration: 400 }),
-      height: withTiming(isRecording ? 240 : 0, { duration: 400 }),
+      height: withTiming(isRecording ? 200 : 0, { duration: 400 }),
       left: withTiming(isRecording ? -44 : -44 + (width - 32) / 2, {
         duration: 400,
       }),
@@ -233,6 +233,7 @@ export const MovieCard = ({ movie }: MovieCardProps) => {
               borderRadius: 30,
               overflow: 'hidden',
               alignItems: 'center',
+              elevation: 5,
             },
           ]}>
           <Text
